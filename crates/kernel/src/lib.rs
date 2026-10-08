@@ -19,6 +19,7 @@ mod coplanar;
 mod curveblend;
 mod delete_face;
 mod freeform;
+pub mod fuzz;
 mod heal;
 mod helix;
 mod iges_in;
