@@ -210,6 +210,38 @@ pub fn edit_joint(app: &SolveApp, id: u64) -> Option<Dialog> {
 }
 
 /// The Drive Joints dialog on a joint (by id).
+/// Edit Joint with its motion playing (the browser's Animate Joint).
+pub fn animate_joint(app: &SolveApp, id: u64) -> Option<Dialog> {
+    let mut d = edit_joint(app, id)?;
+    if let Kind::Assembly(Asm::Joint(f)) = &mut d.kind {
+        f.animate = true;
+    }
+    Some(d)
+}
+
+/// Frame the two components a joint connects (the browser's Find in Window).
+pub fn find_joint(app: &mut SolveApp, id: u64) {
+    let s = &app.session;
+    let Some(j) = s.doc.assembly.joints.iter().find(|j| j.id == id) else { return };
+    let occs = [j.a.occurrence, j.b.occurrence];
+    let model = s.model.state();
+    let world = s.world_state();
+    let mut bb = Aabb3::default();
+    for (name, _, path, _) in s.doc.body_frames(&model) {
+        // The root (occurrence 0) holds the bodies outside every occurrence.
+        let on = occs.iter().any(|o| if *o == 0 { path.is_empty() } else { path.contains(o) });
+        if on && let Some(b) = world.body(&name) {
+            bb = bb.union(&b.mesh().bounds());
+        }
+    }
+    if bb.is_empty() {
+        return;
+    }
+    let mut cam = app.cam;
+    cam.fit(&bb);
+    app.animate_to(cam);
+}
+
 pub fn drive_joint(app: &SolveApp, id: u64) -> Option<Dialog> {
     let joint = app.session.doc.assembly.joints.iter().position(|j| j.id == id)?;
     Some(Dialog::new(Kind::Assembly(Asm::Drive { joint, values: current_values(&app.session, joint), focus: true }), vec![]))
@@ -495,11 +527,24 @@ pub fn rows(app: &mut SolveApp, ui: &mut egui::Ui, k: &mut Asm, inputs: &mut [Se
                 let cur = s.doc.eval(v, unit_kind).ok().filter(|x| x.is_finite()).unwrap_or(0.0);
                 let (mut shown, scale) = if angle { (cur.to_degrees(), 1f64.to_degrees()) } else { (cur, 1.0) };
                 row_label(ui, "");
-                ui.spacing_mut().slider_width = 124.0;
+                ui.spacing_mut().slider_width = 160.0;
                 let r = ui.add(egui::Slider::new(&mut shown, lo * scale..=hi * scale).show_value(false));
                 if r.changed() {
                     *v = if angle { format!("{shown:.1} deg") } else { format!("{shown:.2} mm") };
                 }
+                ui.end_row();
+                // The slider's range: the joint's limits, or the default span when it has none.
+                let limited = j.limits.get(i).copied().flatten().is_some();
+                let fmt = |x: f64| {
+                    let (x, unit) = if angle { (x.to_degrees(), "°") } else { (x, " mm") };
+                    if x.fract().abs() < 1e-6 { format!("{x:.0}{unit}") } else { format!("{x:.1}{unit}") }
+                };
+                row_label(ui, "");
+                ui.label(
+                    RichText::new(format!("{} … {}{}", fmt(lo), fmt(hi), if limited { "  (limits)" } else { "  (no limits)" }))
+                        .size(11.0)
+                        .color(if limited { t.text } else { t.text_dim }),
+                );
                 ui.end_row();
             }
         }
@@ -827,6 +872,8 @@ pub fn overlay(app: &SolveApp, painter: &egui::Painter, proj: &Proj, d: &mut Dia
         }
         return;
     }
+    // A joint names its two picks; a joint origin has one.
+    let two = matches!(k, Asm::Joint(_));
     let hover = match k {
         Asm::Joint(f) => Some(&mut f.hover),
         Asm::JointOrigin { hover, .. } => Some(hover),
@@ -841,8 +888,9 @@ pub fn overlay(app: &SolveApp, painter: &egui::Painter, proj: &Proj, d: &mut Dia
         .filter(|(_, i)| i.accept == SNAPS)
         .filter_map(|(n, i)| i.items.first().and_then(|x| snap_of(&app.session, x)).map(|s| (s, if n == 0 { t.accent } else { t.warning })))
         .collect();
-    for (s, c) in &picked {
-        glyph(painter, proj, s, *c, app.cam.half_height());
+    for (n, (s, c)) in picked.iter().enumerate() {
+        let tag = format!("Component {}", n + 1);
+        glyph(painter, proj, s, *c, app.cam.half_height(), two.then_some(tag.as_str()));
     }
     // The snap under the cursor (found again only when the hovered item changes).
     let accepting = d.inputs.get(d.active).is_some_and(|i| i.accept == SNAPS);
@@ -854,7 +902,7 @@ pub fn overlay(app: &SolveApp, painter: &egui::Painter, proj: &Proj, d: &mut Dia
                 *hover = Some((sel.clone(), snap_of(&app.session, &sel)));
             }
             if let Some((_, Some(s))) = hover.as_ref() {
-                glyph(painter, proj, s, t.hover_profile_edge, app.cam.half_height());
+                glyph(painter, proj, s, t.hover_profile_edge, app.cam.half_height(), Some(snap_name(s.kind)));
             }
         }
         None => *hover = None,
@@ -862,35 +910,69 @@ pub fn overlay(app: &SolveApp, painter: &egui::Painter, proj: &Proj, d: &mut Dia
 }
 
 /// A snap: its kind's marker at the point and the z axis as an arrow.
-fn glyph(painter: &egui::Painter, proj: &Proj, s: &SnapPt, col: Color32, half_height: f64) {
+fn glyph(painter: &egui::Painter, proj: &Proj, s: &SnapPt, col: Color32, half_height: f64, tag: Option<&str>) {
     let Some(c) = proj.to_screen(s.at) else { return };
     let len = half_height * 2.0 * 0.06;
+    // A dark halo under every stroke keeps the glyph readable on light and dark faces alike.
+    let halo = Stroke::new(4.5, Color32::from_black_alpha(150));
+    let white = Stroke::new(1.5, Color32::WHITE);
     if let Some(tip) = proj.to_screen(s.at + s.z * len) {
-        painter.line_segment([c, tip], Stroke::new(2.0, col));
         let d = (tip - c).normalized();
         let n = vec2(-d.y, d.x);
-        painter.add(egui::Shape::convex_polygon(vec![tip, tip - d * 8.0 + n * 4.0, tip - d * 8.0 - n * 4.0], col, Stroke::NONE));
+        let head = vec![tip + d * 2.0, tip - d * 9.0 + n * 5.0, tip - d * 9.0 - n * 5.0];
+        painter.line_segment([c, tip], halo);
+        painter.add(egui::Shape::convex_polygon(head.clone(), Color32::TRANSPARENT, halo));
+        painter.line_segment([c, tip], Stroke::new(2.0, col));
+        painter.add(egui::Shape::convex_polygon(head, col, Stroke::NONE));
     }
-    let white = Stroke::new(1.5, Color32::WHITE);
+    let shape = |fill: Color32, stroke: Stroke, grow: f32| -> egui::Shape {
+        match s.kind {
+            SnapKind::FaceCenter => egui::Shape::rect_filled(egui::Rect::from_center_size(c, vec2(12.0 + grow, 12.0 + grow)), 1.5, fill),
+            SnapKind::CircleCenter => egui::Shape::circle_filled(c, 7.0 + grow / 2.0, fill),
+            SnapKind::EdgeMid => {
+                let r = 8.0 + grow / 2.0;
+                egui::Shape::convex_polygon(vec![c + vec2(0.0, -r), c + vec2(r * 0.93, r * 0.7), c + vec2(-r * 0.93, r * 0.7)], fill, stroke)
+            }
+            SnapKind::Vertex => {
+                let r = 7.5 + grow / 2.0;
+                egui::Shape::convex_polygon(vec![c + vec2(0.0, -r), c + vec2(r, 0.0), c + vec2(0.0, r), c + vec2(-r, 0.0)], fill, stroke)
+            }
+        }
+    };
+    painter.add(shape(Color32::from_black_alpha(150), Stroke::NONE, 4.0));
+    painter.add(shape(col, Stroke::NONE, 0.0));
     match s.kind {
         SnapKind::FaceCenter => {
-            painter.rect(egui::Rect::from_center_size(c, vec2(10.0, 10.0)), 1.0, col, white, egui::StrokeKind::Middle);
+            painter.rect_stroke(egui::Rect::from_center_size(c, vec2(12.0, 12.0)), 1.5, white, egui::StrokeKind::Middle);
         }
         SnapKind::CircleCenter => {
-            painter.circle(c, 6.0, col, white);
-            painter.line_segment([c - vec2(4.0, 0.0), c + vec2(4.0, 0.0)], Stroke::new(1.2, Color32::WHITE));
-            painter.line_segment([c - vec2(0.0, 4.0), c + vec2(0.0, 4.0)], Stroke::new(1.2, Color32::WHITE));
+            painter.circle_stroke(c, 7.0, white);
+            painter.line_segment([c - vec2(4.5, 0.0), c + vec2(4.5, 0.0)], Stroke::new(1.2, Color32::WHITE));
+            painter.line_segment([c - vec2(0.0, 4.5), c + vec2(0.0, 4.5)], Stroke::new(1.2, Color32::WHITE));
         }
-        SnapKind::EdgeMid => {
-            painter.add(egui::Shape::convex_polygon(vec![c + vec2(0.0, -7.0), c + vec2(6.5, 5.0), c + vec2(-6.5, 5.0)], col, white));
+        SnapKind::EdgeMid | SnapKind::Vertex => {
+            painter.add(shape(Color32::TRANSPARENT, white, 0.0));
         }
-        SnapKind::Vertex => {
-            painter.add(egui::Shape::convex_polygon(
-                vec![c + vec2(0.0, -6.5), c + vec2(6.5, 0.0), c + vec2(0.0, 6.5), c + vec2(-6.5, 0.0)],
-                col,
-                white,
-            ));
-        }
+    }
+    // What it snaps to (hovered), or which component it is (picked): a small label.
+    if let Some(tag) = tag {
+        let t = Tokens::get();
+        let font = egui::FontId::proportional(11.5);
+        let g = painter.layout_no_wrap(tag.to_string(), font, t.text);
+        let at = c + vec2(12.0, 10.0);
+        let r = egui::Rect::from_min_size(at, g.size()).expand2(vec2(5.0, 2.0));
+        painter.rect(r, 3.0, t.panel.gamma_multiply(0.92), Stroke::new(1.0, col), egui::StrokeKind::Inside);
+        painter.galley(at, g, t.text);
+    }
+}
+
+/// What a snap is called (the hover label).
+fn snap_name(k: SnapKind) -> &'static str {
+    match k {
+        SnapKind::FaceCenter => "Face center",
+        SnapKind::CircleCenter => "Circle center",
+        SnapKind::EdgeMid => "Edge midpoint",
+        SnapKind::Vertex => "Vertex",
     }
 }
 
