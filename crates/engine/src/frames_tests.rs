@@ -144,3 +144,45 @@ fn sketch_on_a_face_follows_a_moved_body() {
     let c = sketch_point_world(&mut s, "OnTop", "p1");
     assert!((c.z - 25.0).abs() < 1e-6, "{c:?}");
 }
+
+/// A 1 x 1 PNG for canvases.
+const PNG: &str = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+
+/// Canvases belong to a component (the active one, or the one whose face they were put on, picked
+/// in the world) and move with its occurrence.
+#[test]
+fn canvases_move_with_their_component() {
+    let mut s = moved_part();
+    let part = s.active_component;
+    assert_ne!(part, 0);
+    run(&mut s, "FusionAddCanvasCommand", json!({"data": PNG, "plane": "XY", "name": "Plan"}));
+    // From the root, on the moved block's top face (world).
+    run(&mut s, "component.activate", json!({"component": "root"}));
+    run(&mut s, "FusionAddCanvasCommand", json!({"data": PNG, "plane": {"face": [65, 10, 10]}, "name": "Lid", "width": 10}));
+    run(&mut s, "FusionAddCanvasCommand", json!({"data": PNG, "plane": "XZ", "name": "Root"}));
+    let (vals, _) = s.doc.param_values();
+    let world = |s: &Session, name: &str| {
+        let c = s.doc.canvases.iter().find(|c| c.name == name).unwrap();
+        (c.component, s.doc.canvas_plane(&vals, c).unwrap())
+    };
+    let (c, p) = world(&s, "Plan");
+    assert_eq!(c, part);
+    assert!(near(p.origin, Vec3::new(50.0, 0.0, 0.0)), "{:?}", p.origin);
+    let (c, p) = world(&s, "Lid");
+    assert_eq!(c, part, "the face's component");
+    let lid = s.doc.canvases.iter().find(|c| c.name == "Lid").unwrap();
+    let centre = p.to_world(lid.center);
+    assert!(near(centre, Vec3::new(65.0, 10.0, 10.0)), "{centre:?}");
+    assert_eq!(world(&s, "Root").0, 0);
+    // Moving the occurrence carries its canvases, not the root's.
+    run(&mut s, "occurrence.move", json!({"occurrence": "Part:1", "translate": [0, 40, 0]}));
+    let (vals, _) = s.doc.param_values();
+    let lid = s.doc.canvases.iter().find(|c| c.name == "Lid").unwrap();
+    let centre = s.doc.canvas_plane(&vals, lid).unwrap().to_world(lid.center);
+    assert!(near(centre, Vec3::new(65.0, 50.0, 10.0)), "{centre:?}");
+    let root = s.doc.canvases.iter().find(|c| c.name == "Root").unwrap();
+    assert!(near(s.doc.canvas_plane(&vals, root).unwrap().origin, Vec3::ZERO));
+    // The component survives a save and reopen.
+    let back = solvecraft_doc::Document::from_json(&s.doc.to_json()).unwrap();
+    assert_eq!(back.canvases, s.doc.canvases);
+}

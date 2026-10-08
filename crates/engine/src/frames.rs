@@ -58,6 +58,7 @@ fn table(id: &str) -> &'static [(&'static str, K)] {
         "SheetMetalFoldCmd" => &[("points", Picks), ("fixed", Pick), ("body", Body)],
         "SketchCreate" | "sketch.redefine" => &[("plane", Plane)],
         "FusionAddEditDecalCommand" => &[("face", Pick)],
+        "FusionAddCanvasCommand" => &[("plane", Plane), ("at", Pick)],
         "IntersectCmd" => &[("refs", Picks)],
         "ProjectToSurface" | "SketchIsoparametricCurve" => &[("face", Pick), ("body", Body)],
         "IntersectionCurve" => &[("a", Picks), ("b", Picks)],
@@ -155,6 +156,37 @@ fn frame_at(s: &Session, f: &Frames, p: Vec3, body: Option<&str>) -> Option<Mat>
         }
     }
     best.map(|(_, m)| m)
+}
+
+/// The component of the body a point (in its component's frame) lies on, the active
+/// component's bodies first.
+pub fn component_at(s: &Session, p: Vec3) -> Option<u64> {
+    let st = s.model.state();
+    let mut best: Option<(bool, f64, u64)> = None;
+    for b in &st.bodies {
+        let mesh = b.mesh();
+        let bb = mesh.bounds();
+        let tol = (bb.diagonal() * 1e-3).max(1e-3);
+        if p.x < bb.min.x - tol
+            || p.y < bb.min.y - tol
+            || p.z < bb.min.z - tol
+            || p.x > bb.max.x + tol
+            || p.y > bb.max.y + tol
+            || p.z > bb.max.z + tol
+        {
+            continue;
+        }
+        let d = mesh.triangles.iter().filter_map(|t| mesh.tri(t)).map(|[a, b, c]| tri_dist(p, a, b, c)).fold(f64::INFINITY, f64::min);
+        if d > tol {
+            continue;
+        }
+        let comp = s.doc.body_component(&b.name, b.feature);
+        let key = (comp != s.active_component, d);
+        if best.as_ref().is_none_or(|(o, bd, _)| key < (*o, *bd)) {
+            best = Some((key.0, d, comp));
+        }
+    }
+    best.map(|(_, _, c)| c)
 }
 
 fn tri_dist(p: Vec3, a: Vec3, b: Vec3, c: Vec3) -> f64 {
