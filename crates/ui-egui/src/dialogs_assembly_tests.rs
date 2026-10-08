@@ -268,3 +268,25 @@ fn drive_value_takes_the_keyboard() {
     assert!((j.values[0] - 90f64.to_radians()).abs() < 1e-9, "{:?}", j.values);
     assert!(app.dialog.is_none());
 }
+
+/// Named joint origins are drawn where their component is: a drive of the occurrence, or a free
+/// move not captured yet, carries them along.
+#[test]
+fn joint_origins_follow_their_component() {
+    let mut app = two_boxes();
+    app.session.execute("JointOrigin", &json!({"name": "Top of B", "face": [40, 10, 10]})).unwrap();
+    let at = |app: &SolveApp| {
+        let v = origins_world(&app.session);
+        let (_, m) = v.iter().find(|(n, _)| n == "Top of B").unwrap();
+        solvecraft_engine::doc::apply_point(m, Vec3::ZERO)
+    };
+    assert!(at(&app).dist(Vec3::new(40.0, 10.0, 10.0)) < 1e-6, "{:?}", at(&app));
+    let b = occ(&app, "B");
+    app.session.execute("occurrence.move", &json!({"occurrence": b, "translate": [0, 0, 15]})).unwrap();
+    assert!(at(&app).dist(Vec3::new(40.0, 10.0, 25.0)) < 1e-6, "{:?}", at(&app));
+    // A drag not captured yet.
+    let mut m = app.session.doc.occurrence_of(app.session.doc.find_component("B").unwrap()).unwrap().transform;
+    m[3][0] += 5.0;
+    app.session.pending_moves.insert(b, m);
+    assert!(at(&app).dist(Vec3::new(45.0, 10.0, 25.0)) < 1e-6, "{:?}", at(&app));
+}

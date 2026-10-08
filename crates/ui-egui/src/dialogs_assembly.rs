@@ -1029,3 +1029,51 @@ pub fn browser_joints(app: &mut SolveApp, ui: &mut egui::Ui, depth: usize) {
 #[cfg(test)]
 #[path = "dialogs_assembly_tests.rs"]
 mod tests;
+
+thread_local! {
+    /// Named joint origins in the world, for the design state they were found in.
+    static ORIGINS: std::cell::RefCell<Option<(String, Vec<(String, solvecraft_engine::doc::Mat)>)>> = const { std::cell::RefCell::new(None) };
+}
+
+/// Named joint origins in the world: on their occurrence's component, so they move with it
+/// (joint drives, free moves not captured yet, Capture Position).
+pub fn origins_world(s: &Session) -> Vec<(String, solvecraft_engine::doc::Mat)> {
+    if s.doc.assembly.origins.is_empty() {
+        return Vec::new();
+    }
+    let key = format!("{}:{:?}", s.revision, s.pending_moves);
+    if let Some(v) = ORIGINS.with(|o| o.borrow().as_ref().filter(|(k, _)| *k == key).map(|(_, v)| v.clone())) {
+        return v;
+    }
+    let doc: std::borrow::Cow<solvecraft_engine::doc::Document> = if s.pending_moves.is_empty() {
+        std::borrow::Cow::Borrowed(&*s.doc)
+    } else {
+        let mut d = (*s.doc).clone();
+        for o in &mut d.occurrences {
+            if let Some(m) = s.pending_moves.get(&o.id) {
+                o.transform = *m;
+            }
+        }
+        std::borrow::Cow::Owned(d)
+    };
+    let st = s.model.state();
+    let v: Vec<_> = doc.assembly.origins.iter().filter_map(|o| doc.origin_world(&st, &o.origin).ok().map(|m| (o.name.clone(), m))).collect();
+    ORIGINS.with(|o| *o.borrow_mut() = Some((key, v.clone())));
+    v
+}
+
+/// Named joint origins in the viewport: a small triad where each sits.
+pub fn origins(app: &SolveApp, painter: &egui::Painter, proj: &Proj) {
+    let t = Tokens::get();
+    let len = app.cam.half_height() * 2.0 * 0.04;
+    for (_, m) in origins_world(&app.session) {
+        let at = solvecraft_engine::doc::apply_point(&m, Vec3::ZERO);
+        let Some(c) = proj.to_screen(at) else { continue };
+        for (axis, col) in [(Vec3::X, t.axis_x), (Vec3::Y, t.axis_y), (Vec3::Z, t.axis_z)] {
+            if let Some(tip) = proj.to_screen(at + solvecraft_engine::doc::apply_vector(&m, axis) * len) {
+                painter.line_segment([c, tip], Stroke::new(2.0, col));
+            }
+        }
+        painter.circle(c, 4.5, t.panel, Stroke::new(1.5, t.text));
+    }
+}
