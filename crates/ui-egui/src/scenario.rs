@@ -18,7 +18,8 @@
 //!   into `$SOLVECRAFT_SCENARIO_SHOTS` when that is set; `{"debug": 1}`
 //!   prints the UI state
 //! - AT may also be `{"plane": "XY"}` (the middle of an origin plane's square), `{"axis": "Z"}`,
-//!   `{"dimension": "d1"}` or `{"handle": "arrow"}` (a manipulator handle: see [`publish_handle`])
+//!   `{"dimension": "d1"}`, `{"handle": "arrow"}` (a manipulator handle: see [`publish_handle`]),
+//!   `{"browser": "Bodies"}` (a browser row by its label) or `{"chevron": "Bodies"}` (its fold arrow)
 //! - `{"autosave": true}`: autosave into the scenario's recovery folder; `{"restart": "crash" |
 //!   "close"}`: the app dies (or closes) and a new one starts on the same folders
 //! - `{"note": "…"}`: a comment
@@ -576,6 +577,27 @@ pub fn check(h: &mut Harness, e: &Value) -> Result<(), String> {
             "name" => {
                 if doc["name"] != *v {
                     return Err(format!("design name: got {}, want {v}", doc["name"]));
+                }
+            }
+            "browser_has" | "browser_lacks" => {
+                // Browser rows on screen, by label.
+                let r = h.call("ui.browser", json!({}));
+                let labels: Vec<String> =
+                    r["result"]["rows"].as_array().into_iter().flatten().filter_map(|x| x["label"].as_str().map(str::to_string)).collect();
+                for want in v.as_array().into_iter().flatten().filter_map(Value::as_str) {
+                    let there = labels.iter().any(|l| l == want);
+                    if there != (k.as_str() == "browser_has") {
+                        return Err(format!("browser row `{want}` {}: rows {labels:?}", if there { "still shown" } else { "missing" }));
+                    }
+                }
+            }
+            "browser_selected" => {
+                // Nothing selected and no component picked (a fold click selects nothing).
+                let r = h.call("ui.browser", json!({}));
+                let none = r["result"]["selection"].as_array().is_none_or(|a| a.is_empty())
+                    && r["result"]["picked_components"].as_array().is_none_or(|a| a.is_empty());
+                if none == v.as_bool().unwrap_or(false) {
+                    return Err(format!("browser selection: {}", r["result"]));
                 }
             }
             "query" => {

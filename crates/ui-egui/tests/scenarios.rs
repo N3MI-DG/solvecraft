@@ -51,6 +51,7 @@ scenarios!(
     s25_autosave_recovery,
     s27_move_triad,
     s33_move_x_arrow,
+    browser_chevrons,
 );
 
 /// Scenarios written ahead of their fixes or features (the user's open bugs): run with
