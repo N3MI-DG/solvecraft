@@ -140,6 +140,9 @@ pub(super) fn add_link(s: &Session, doc: &Document, id: u64, sk: &mut Sketch, ki
     let plane = sketch_plane(doc, id)?;
     let (vals, _) = doc.param_values();
     let st = s.model.state_before(id);
+    // The model as the sketch's component sees it.
+    let comp = doc.feature(id).map(|f| f.component).unwrap_or(0);
+    let st = solvecraft_doc::state_in_frame(doc, &st, comp);
     let r = resolve(doc, &vals, &st, &plane, kind, &src)?;
     Ok(sk.add_link_with_wires(kind, r.source, &r.geom, &r.wires)?)
 }

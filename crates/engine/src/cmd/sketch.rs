@@ -311,8 +311,10 @@ pub(super) fn plane_ref(s: &Session, p: &Value, cmd: &str) -> Result<PlaneRef> {
         }
         Some(v @ Value::Object(o)) => {
             if let Some(fp) = o.get("face").and_then(vec3) {
-                // A planar face of a body at this point.
-                let st = s.model.state();
+                // A planar face of a body at this point, as the active component sees the model
+                // (another component's face where it is placed).
+                let model = s.model.state();
+                let st = solvecraft_doc::state_in_frame(&s.doc, &model, s.active_component);
                 let mut found = None;
                 let mut face_name = None;
                 for b in &st.bodies {

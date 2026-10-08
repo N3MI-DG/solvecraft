@@ -256,7 +256,10 @@ fn drive_value_takes_the_keyboard() {
     let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1600.0, 1000.0));
     let frame = |app: &mut SolveApp, events: Vec<egui::Event>| {
         let input = egui::RawInput { screen_rect: Some(screen), events, ..Default::default() };
-        ctx.run_ui(input, |ui| crate::dialogs::show(app, ui.ctx()))
+        let mut out = ctx.run_ui(input, |ui| crate::dialogs::show(app, ui.ctx()));
+        // Nothing is painted: drop the texture changes (an unapplied delta panics on drop).
+        out.textures_delta.clear();
+        out
     };
     frame(&mut app, vec![]);
     frame(&mut app, vec![]);
