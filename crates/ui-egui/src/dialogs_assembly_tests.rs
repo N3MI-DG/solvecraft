@@ -293,3 +293,19 @@ fn joint_origins_follow_their_component() {
     app.session.pending_moves.insert(b, m);
     assert!(at(&app).dist(Vec3::new(45.0, 10.0, 25.0)) < 1e-6, "{:?}", at(&app));
 }
+
+/// Edit Feature on a moved component: the dialog shows the feature's picks where the
+/// component is (its stored points are in the component's frame).
+#[test]
+fn edit_feature_on_a_moved_component_refills_in_the_world() {
+    let mut app = two_boxes();
+    let b = occ(&app, "B");
+    app.session.execute("occurrence.move", &json!({"occurrence": b, "translate": [0, 0, 15]})).unwrap();
+    let r = app.session.execute("FusionFilletEdgesCommand", &json!({"edges": [[40, 0, 25]], "radius": 2})).unwrap();
+    let id = r["feature"].as_u64().unwrap();
+    let d = crate::dialogs::for_feature(&app, id, None).unwrap();
+    let items: Vec<Sel> = d.inputs.iter().flat_map(|i| i.items.clone()).collect();
+    let Some(Sel::Edge { body, point, .. }) = items.first() else { panic!("{items:?}") };
+    assert_eq!(body, "Body2");
+    assert!(point.dist(Vec3::new(40.0, 0.0, 25.0)) < 1e-6, "{point:?}");
+}

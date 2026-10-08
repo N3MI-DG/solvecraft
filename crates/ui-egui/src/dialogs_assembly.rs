@@ -964,61 +964,36 @@ pub fn timeline_joints(app: &mut SolveApp, ui: &mut egui::Ui, p: &egui::Painter,
 /// The Joints folder at the end of the Browser: a row per joint (double-click edits, the menu
 /// edits, drives, suppresses or deletes).
 pub fn browser_joints(app: &mut SolveApp, ui: &mut egui::Ui, depth: usize) {
-    let t = Tokens::get();
+    use crate::browser::{Row, draw_row, is_open, toggle};
     let joints: Vec<(u64, String, JointKind, bool)> =
         app.session.doc.assembly.joints.iter().map(|j| (j.id, j.name.clone(), j.kind, j.suppressed)).collect();
     if joints.is_empty() {
         return;
     }
-    let fold_id = egui::Id::new("sc_browser_joints_open");
-    let mut open = ui.data(|d| d.get_temp::<bool>(fold_id)).unwrap_or(true);
-    let row = |ui: &mut egui::Ui, depth: f32, icon: &str, label: &str, dim: bool, fold: Option<bool>| -> egui::Response {
-        let (r, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 22.0), egui::Sense::click());
-        if resp.hovered() {
-            ui.painter().rect_filled(r, 3.0, t.hover);
-        }
-        let x = r.left() + 2.0 + depth * 14.0;
-        let cy = r.center().y;
-        if let Some(o) = fold {
-            let c = egui::pos2(x + 6.0, cy);
-            let pts = if o {
-                vec![c + vec2(-4.0, -2.0), c + vec2(4.0, -2.0), c + vec2(0.0, 3.0)]
-            } else {
-                vec![c + vec2(-2.0, -4.0), c + vec2(3.0, 0.0), c + vec2(-2.0, 4.0)]
-            };
-            ui.painter().add(egui::Shape::convex_polygon(pts, t.text_dim, Stroke::NONE));
-        }
-        let ir = egui::Rect::from_center_size(egui::pos2(x + 26.0, cy), vec2(16.0, 16.0));
-        crate::icons::paint(ui.painter(), ir, icon, if dim { t.border } else { t.icon }, t.icon_fill, t.accent);
-        ui.painter().text(
-            egui::pos2(x + 38.0, cy),
-            egui::Align2::LEFT_CENTER,
-            label,
-            egui::FontId::proportional(13.0),
-            if dim { t.text_dim } else { t.text },
-        );
-        resp
-    };
-    let depth = depth as f32;
-    if row(ui, depth, "folder", "Joints", false, Some(open)).clicked() {
-        open = !open;
-        ui.data_mut(|d| d.insert_temp(fold_id, open));
+    // Drawn like every other browser node (its fold and rows publish `fold:Joints`, `row:<name>`).
+    let key = "c0/joints";
+    let open = is_open(app, key, true);
+    let r = draw_row(ui, ui.id().with(key), &Row { depth, fold: Some(open), icon: "folder", label: "Joints", ..Default::default() });
+    if r.fold || r.clicked {
+        toggle(app, key, true);
     }
     if !open {
         return;
     }
     let mut dialog: Option<Dialog> = None;
     for (id, name, kind, suppressed) in joints {
-        let resp = row(ui, depth + 1.0, "joint", &name, suppressed, None).on_hover_text(format!("{kind:?} joint"));
-        if resp.double_clicked() {
+        let r =
+            draw_row(ui, ui.id().with(("joint", id)), &Row { depth: depth + 1, icon: "joint", label: &name, dim: suppressed, ..Default::default() });
+        if let Some(resp) = &r.resp {
+            resp.clone().on_hover_text(format!("{kind:?} joint"));
+        }
+        if r.double {
             dialog = edit_joint(app, id);
         }
         // The same menus as the rest of the browser.
-        if resp.secondary_clicked() {
-            let at = resp.interact_pointer_pos().unwrap_or(resp.rect.left_bottom());
+        if let Some(at) = r.secondary {
             crate::context_menu::open_for(app, at, crate::context_menu::Target::Joint { id });
         }
-        let _ = (kind, suppressed);
     }
     if let Some(d) = dialog {
         app.tool = None;
