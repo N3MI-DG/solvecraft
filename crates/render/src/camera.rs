@@ -343,11 +343,36 @@ impl Camera {
         self.target = self.target - r * (dx * k) + u * (dy * k);
     }
     /// Orbit by pixel deltas. The model follows the cursor: dragging right turns the side
-    /// facing the viewer to the right.
+    /// facing the viewer to the right. The elevation stops short of straight up and down; past
+    /// them (after [`Camera::orbit_free`]) it can move back but no further out.
     pub fn orbit(&mut self, dx: f64, dy: f64) {
         let lim = std::f64::consts::FRAC_PI_2 - 1e-4;
         self.yaw = (self.yaw + dx * 0.008) % std::f64::consts::TAU;
-        self.pitch = (self.pitch + dy * 0.008).clamp(-lim, lim);
+        let p = self.pitch + dy * 0.008;
+        self.pitch = if p.abs() <= lim {
+            p
+        } else if self.pitch.abs() > lim {
+            if p.abs() < self.pitch.abs() { p } else { self.pitch }
+        } else {
+            p.clamp(-lim, lim)
+        };
+    }
+    /// Orbit with no limit on the elevation: the view turns over the top and on, upside down
+    /// (the elevation wraps into −π…π; the basis follows without a jump).
+    pub fn orbit_free(&mut self, dx: f64, dy: f64) {
+        use std::f64::consts::{PI, TAU};
+        let y = self.yaw + dx * 0.008;
+        if y.is_finite() {
+            self.yaw = y % TAU;
+        }
+        let p = self.pitch + dy * 0.008;
+        if p.is_finite() {
+            self.pitch = (p + PI).rem_euclid(TAU) - PI;
+        }
+    }
+    /// A free orbit took the view over the top: the up axis points down the screen.
+    pub fn upside_down(&self) -> bool {
+        self.pitch.cos() < 0.0
     }
     pub fn set_view(&mut self, v: StandardView) {
         let lim = std::f64::consts::FRAC_PI_2 - 1e-6;
@@ -500,6 +525,45 @@ mod tests {
         assert!(c.is_valid());
         c.fit(&Aabb3::EMPTY);
         assert!(c.is_valid());
+    }
+
+    /// A free orbit turns over the top and under the bottom: the view direction and its up
+    /// change smoothly through the poles, and the view comes out upside down.
+    #[test]
+    fn free_orbit_turns_over_the_top_without_a_jump() {
+        let mut c = Camera::default();
+        let (_, mut up, mut back) = c.basis();
+        for _ in 0..2000 {
+            c.orbit_free(0.0, 1.0);
+            let (_, u, b) = c.basis();
+            assert!(b.dist(back) < 0.01 && u.dist(up) < 0.01, "a jump at pitch {}", c.pitch);
+            assert!(c.is_valid() && (-std::f64::consts::PI..=std::f64::consts::PI).contains(&c.pitch));
+            (up, back) = (u, b);
+        }
+        // Over the top from the iso view (35°): past 90° the camera looks down from the far side,
+        // upside down.
+        let mut c = Camera::default();
+        c.orbit_free(0.0, (std::f64::consts::FRAC_PI_2 + 0.3 - c.pitch) / 0.008);
+        assert!(c.upside_down() && c.back().z > 0.0);
+        // Hostile deltas leave a valid camera.
+        c.orbit_free(f64::NAN, f64::INFINITY);
+        c.orbit_free(1e300, -1e300);
+        assert!(c.is_valid());
+    }
+
+    /// The ordinary orbit stops short of the poles, and from beyond them (left by a free orbit)
+    /// moves back without snapping.
+    #[test]
+    fn orbit_keeps_its_limit_without_snapping_back() {
+        let lim = std::f64::consts::FRAC_PI_2 - 1e-4;
+        let mut c = Camera::default();
+        c.orbit(0.0, 1e6);
+        assert_eq!(c.pitch, lim);
+        c.pitch = 2.0;
+        c.orbit(0.0, 10.0);
+        assert_eq!(c.pitch, 2.0, "no further out");
+        c.orbit(0.0, -10.0);
+        assert!((c.pitch - (2.0 - 0.08)).abs() < 1e-12, "back toward the range, no snap");
     }
 
     /// A view change sampled every frame (60 fps) moves smoothly to the very end: no frame
