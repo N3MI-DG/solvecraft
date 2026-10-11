@@ -2,9 +2,9 @@
 //! [`model_name`]) and what their input reports say ([`Decoder`]): six axes of motion and the
 //! buttons.
 //!
-//! This crate knows nothing about SolveCraft's documents, camera or UI, and does no I/O: a reader
-//! hands it the bytes of each input report and applies the [`Event`]s it gets back. It builds for
-//! every target, wasm included.
+//! This crate knows nothing about SolveCraft's documents, camera or UI. Decoding does no I/O and
+//! builds for every target, wasm included; the `native` feature adds `Reader`, a background
+//! thread that finds the device over HID and hands its [`Event`]s over.
 //!
 //! The report layouts and device ids follow the devices' own reports, the PySpaceMouse device
 //! table (MIT, github.com/JakubAndrysek/PySpaceMouse) and the USB ID repository
@@ -14,6 +14,10 @@
 
 mod decode;
 mod devices;
+#[cfg(feature = "native")]
+mod reader;
 
 pub use decode::{Buttons, Decoder, Event, FULL_SCALE, Motion};
 pub use devices::{USAGE_MULTI_AXIS, USAGE_PAGE_GENERIC_DESKTOP, VENDOR_3DCONNEXION, VENDOR_LOGITECH, is_space_mouse, model_name};
+#[cfg(feature = "native")]
+pub use reader::Reader;

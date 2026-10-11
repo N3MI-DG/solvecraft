@@ -1,0 +1,37 @@
+# Lets the user at the machine read 3Dconnexion 3D mice (SpaceMouse) over USB, Bluetooth or the
+# Universal Receiver, so SolveCraft can open their HID interface (/dev/hidraw*). Without it the
+# device node is root's alone and the 3D mouse does nothing.
+#
+# Install:
+#   sudo cp packaging/linux/71-solvecraft-3dconnexion.rules /etc/udev/rules.d/
+#   sudo udevadm control --reload-rules && sudo udevadm trigger --subsystem-match=hidraw
+#
+# KERNELS matches the HID device's name (bus:vendor:product.n, such as 0005:256F:C63A.0004), which
+# Bluetooth devices have too; uaccess grants the logged-in user only, not every account.
+KERNEL=="hidraw*", KERNELS=="*:256F:*", TAG+="uaccess"
+
+# Models made before 2011, and the wired SpaceMouse Pro, carry Logitech's vendor id (046D), which
+# the rule above doesn't match: matching all of it would open every Logitech keyboard and mouse.
+# Uncomment the line for your model; each matches that exact product only.
+# SpaceMouse Plus XT
+#KERNEL=="hidraw*", KERNELS=="*:046D:C603.*", TAG+="uaccess"
+# CADman
+#KERNEL=="hidraw*", KERNELS=="*:046D:C605.*", TAG+="uaccess"
+# SpaceMouse Classic
+#KERNEL=="hidraw*", KERNELS=="*:046D:C606.*", TAG+="uaccess"
+# Spaceball 5000
+#KERNEL=="hidraw*", KERNELS=="*:046D:C621.*", TAG+="uaccess"
+# SpaceTraveler
+#KERNEL=="hidraw*", KERNELS=="*:046D:C623.*", TAG+="uaccess"
+# SpacePilot
+#KERNEL=="hidraw*", KERNELS=="*:046D:C625.*", TAG+="uaccess"
+# SpaceNavigator
+#KERNEL=="hidraw*", KERNELS=="*:046D:C626.*", TAG+="uaccess"
+# SpaceExplorer
+#KERNEL=="hidraw*", KERNELS=="*:046D:C627.*", TAG+="uaccess"
+# SpaceNavigator for Notebooks
+#KERNEL=="hidraw*", KERNELS=="*:046D:C628.*", TAG+="uaccess"
+# SpacePilot Pro
+#KERNEL=="hidraw*", KERNELS=="*:046D:C629.*", TAG+="uaccess"
+# SpaceMouse Pro (wired)
+#KERNEL=="hidraw*", KERNELS=="*:046D:C62B.*", TAG+="uaccess"

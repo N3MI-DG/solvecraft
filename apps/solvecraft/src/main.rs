@@ -70,6 +70,7 @@ fn services() -> Services {
             rfd::FileDialog::new().set_file_name(name).add_filter("File", exts).save_file().map(|p| p.to_string_lossy().to_string())
         })),
         graphics_path: graphics_path().map(|p| p.to_string_lossy().to_string()),
+        // Started with the window (it wakes the UI when the 3D mouse moves).
         spacemouse: None,
         show_in_folder: Some(Box::new(|path| {
             let folder = std::path::Path::new(path).parent().unwrap_or_else(|| std::path::Path::new("."));
@@ -171,6 +172,14 @@ fn main() -> eframe::Result {
         options,
         Box::new(move |cc| {
             let mut app = SolveApp::new(Session::default(), services());
+            // The 3D mouse: a background reader, started while it's turned on in Preferences;
+            // each report wakes the UI for a frame.
+            let ctx = cc.egui_ctx.clone();
+            app.services.spacemouse = Some(Box::new(move || {
+                let ctx = ctx.clone();
+                let reader = solvecraft_spacemouse::Reader::start(move || ctx.request_repaint());
+                Box::new(move || reader.events())
+            }));
             app.custom_titlebar = CUSTOM_TITLEBAR;
             app.integrated_titlebar = cfg!(target_os = "macos");
             if let Some(p) = cc.storage.and_then(|s| s.get_string(PREFS_KEY)) {

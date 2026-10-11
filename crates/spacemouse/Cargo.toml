@@ -8,4 +8,10 @@ license.workspace = true
 [lints]
 workspace = true
 
+[features]
+# The device reader (a background thread over HID); desktop builds only.
+native = ["dep:async-hid", "dep:futures-lite"]
+
 [dependencies]
+async-hid = { workspace = true, optional = true }
+futures-lite = { workspace = true, optional = true }

@@ -13,6 +13,7 @@ workspace = true
 [dependencies]
 solvecraft-engine = { workspace = true }
 solvecraft-ui-egui = { workspace = true }
+solvecraft-spacemouse = { workspace = true, features = ["native"] }
 eframe = { workspace = true, features = ["default_fonts", "wgpu", "accesskit", "wayland", "x11"] }
 egui = { workspace = true }
 serde_json = { workspace = true }

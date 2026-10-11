@@ -42,6 +42,11 @@ truck-topology = "0.6"
 zip = { version = "3", default-features = false, features = ["deflate"] }
 quick-xml = "0.38"
 
+# 3D mouse input (MIT, pure Rust HID: Win32, Linux hidraw without libudev, macOS IOHIDManager).
+# Only crates/spacemouse uses it, behind its `native` feature.
+async-hid = "0.5"
+futures-lite = "2"
+
 # fonts (sketch text outlines; MIT OR Apache-2.0, pure Rust)
 ttf-parser = { version = "0.25", default-features = false, features = ["std"] }
 
