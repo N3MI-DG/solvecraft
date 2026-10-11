@@ -71,6 +71,7 @@ pub mod sketch_dims;
 mod sketch_edit_tests;
 pub mod sketch_palette;
 pub mod sketch_tools;
+pub mod spacemouse;
 pub mod stand_up;
 pub mod theme;
 pub mod timeline;
@@ -158,7 +159,13 @@ pub struct Services {
     pub show_in_folder: Option<Box<dyn Fn(&str)>>,
     /// Where the host reads the anti-aliasing preference at start (a small JSON file).
     pub graphics_path: Option<String>,
+    /// Starts the host's 3D mouse reader, while the 3D mouse is turned on: what it returns gives
+    /// the events since the last call (polled every frame), and dropping it stops the reader.
+    pub spacemouse: Option<Box<dyn Fn() -> SpacemouseEvents>>,
 }
+
+/// A running 3D mouse reader's events since the last call.
+pub type SpacemouseEvents = Box<dyn Fn() -> Vec<solvecraft_spacemouse::Event>>;
 
 pub struct SolveApp {
     pub session: Session,
@@ -175,6 +182,8 @@ pub struct SolveApp {
     pub pre_sketch_marker: Option<Option<usize>>,
     pub services: Services,
     pub viewport: viewport::ViewportState,
+    /// The 3D mouse: its last motion and buttons.
+    pub spacemouse: spacemouse::State,
     pub tool: Option<tools::Tool>,
     pub dialog: Option<dialogs::Dialog>,
     /// The Change Parameters window, when open.
@@ -246,6 +255,7 @@ impl SolveApp {
             pre_sketch_marker: None,
             services,
             viewport: viewport::ViewportState::default(),
+            spacemouse: spacemouse::State::default(),
             tool: None,
             dialog: None,
             params: None,

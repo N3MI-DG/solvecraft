@@ -10,6 +10,7 @@ workspace = true
 
 [dependencies]
 solvecraft-engine = { workspace = true }
+solvecraft-spacemouse = { workspace = true }
 egui = { workspace = true }
 egui-wgpu = { workspace = true }
 serde = { workspace = true }

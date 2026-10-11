@@ -466,6 +466,7 @@ pub fn handle(app: &mut SolveApp, ctx: &egui::Context, req: &ControlRequest) -> 
             None => ok(json!({"question": app.tree.capture_prompt, "pending_moves": app.session.pending_moves.len()})),
         },
         "ui.prefs" => wrap(crate::prefs::control(app, p)),
+        "ui.spacemouse" => wrap(crate::spacemouse::control(app, p)),
         "ui.help" => match s("item") {
             Some(i @ ("about" | "shortcuts" | "report")) => {
                 crate::help::run(app, ctx, i);

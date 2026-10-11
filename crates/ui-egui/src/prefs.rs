@@ -57,6 +57,24 @@ pub struct Prefs {
     pub up_axis: String,
     /// After a STEP or IGES file opens, offer to stand a Y-up part up (`stand_up`).
     pub offer_stand_up: bool,
+    /// The 3D mouse moves the view (off until turned on in Preferences).
+    pub spacemouse: bool,
+    /// 3D mouse speeds (1 = normal): pan, tilt and spin, zoom.
+    pub spacemouse_pan_speed: f32,
+    pub spacemouse_turn_speed: f32,
+    pub spacemouse_zoom_speed: f32,
+    /// Seconds the 3D mouse's motion takes to glide to a new reading (0…0.5).
+    pub spacemouse_smoothing: f32,
+    /// Response curve, 0 (linear) … 1 (cubic): small deflections move the view less.
+    pub spacemouse_response: f32,
+    /// Share of each axis's travel around rest that is ignored (0…0.5).
+    pub spacemouse_dead_zone: f32,
+    /// Only the axis pushed furthest moves the view.
+    pub spacemouse_dominant: bool,
+    /// Reversed: pan left/right, pan up/down, zoom, tilt, spin.
+    pub spacemouse_invert: [bool; 5],
+    /// Each button's action, the first button first (`spacemouse::ACTIONS`).
+    pub spacemouse_buttons: Vec<String>,
 }
 
 impl Default for Prefs {
@@ -76,6 +94,16 @@ impl Default for Prefs {
             look_at_speed: 1.0,
             up_axis: "z".into(),
             offer_stand_up: true,
+            spacemouse: false,
+            spacemouse_pan_speed: 1.0,
+            spacemouse_turn_speed: 1.0,
+            spacemouse_zoom_speed: 1.0,
+            spacemouse_smoothing: 0.06,
+            spacemouse_response: 0.5,
+            spacemouse_dead_zone: 0.05,
+            spacemouse_dominant: false,
+            spacemouse_invert: [false; 5],
+            spacemouse_buttons: vec!["fit".into(), "home".into()],
         }
     }
 }
@@ -173,6 +201,16 @@ fn defaults(app: &mut SolveApp, page: usize) {
             p.orbit_cursor = d.orbit_cursor;
             p.look_at_anim = d.look_at_anim;
             p.look_at_speed = d.look_at_speed;
+            p.spacemouse = d.spacemouse;
+            p.spacemouse_pan_speed = d.spacemouse_pan_speed;
+            p.spacemouse_turn_speed = d.spacemouse_turn_speed;
+            p.spacemouse_zoom_speed = d.spacemouse_zoom_speed;
+            p.spacemouse_smoothing = d.spacemouse_smoothing;
+            p.spacemouse_response = d.spacemouse_response;
+            p.spacemouse_dead_zone = d.spacemouse_dead_zone;
+            p.spacemouse_dominant = d.spacemouse_dominant;
+            p.spacemouse_invert = d.spacemouse_invert;
+            p.spacemouse_buttons = d.spacemouse_buttons;
         }
         PAGE_SHORTCUTS => crate::keymap::reset(app, None),
         PAGE_DESIGN => {
@@ -560,6 +598,7 @@ fn page(app: &mut SolveApp, ui: &mut egui::Ui, t: &Tokens) {
                 egui::Slider::new(&mut app.preferences.look_at_speed, 0.5..=3.0).step_by(0.25).custom_formatter(|v, _| format!("{v:.2}×")),
             );
             ui.end_row();
+            spacemouse_prefs(ui, &mut app.preferences);
         }
         PAGE_DESIGN => {
             ui.label("Default modelling orientation");
@@ -622,6 +661,88 @@ fn page(app: &mut SolveApp, ui: &mut egui::Ui, t: &Tokens) {
             ui.end_row();
         }
     });
+}
+
+/// The 3D mouse rows of the Navigation page: set apart by a line, the settings shown (indented)
+/// only while the 3D mouse is in use.
+fn spacemouse_prefs(ui: &mut egui::Ui, p: &mut Prefs) {
+    ui.separator();
+    ui.separator();
+    ui.end_row();
+    ui.label("Use a 3D mouse");
+    ui.checkbox(&mut p.spacemouse, "")
+        .on_hover_text("Slide the cap to pan, push or pull it to zoom, tilt it to turn the view up or down, twist it to spin");
+    ui.end_row();
+    if !p.spacemouse {
+        return;
+    }
+    let sub = |ui: &mut egui::Ui, text: &str| {
+        ui.horizontal(|ui| {
+            ui.add_space(ui.spacing().indent);
+            ui.label(text);
+        });
+    };
+    let speed = |v: f64, _: std::ops::RangeInclusive<usize>| format!("{v:.2}×");
+    sub(ui, "Pan speed");
+    ui.add(egui::Slider::new(&mut p.spacemouse_pan_speed, 0.1..=5.0).logarithmic(true).custom_formatter(speed));
+    ui.end_row();
+    sub(ui, "Tilt and spin speed");
+    ui.add(egui::Slider::new(&mut p.spacemouse_turn_speed, 0.1..=5.0).logarithmic(true).custom_formatter(speed));
+    ui.end_row();
+    sub(ui, "Zoom speed");
+    ui.add(egui::Slider::new(&mut p.spacemouse_zoom_speed, 0.1..=5.0).logarithmic(true).custom_formatter(speed));
+    ui.end_row();
+    sub(ui, "Smoothing");
+    ui.add(egui::Slider::new(&mut p.spacemouse_smoothing, 0.0..=0.5).custom_formatter(|v, _| format!("{:.0} ms", v * 1000.0)))
+        .on_hover_text("How long the view takes to follow a change of the cap: starts, stops and several directions at once blend smoothly");
+    ui.end_row();
+    sub(ui, "Response");
+    ui.add(egui::Slider::new(&mut p.spacemouse_response, 0.0..=1.0).custom_formatter(|v, _| match v {
+        v if v < 0.01 => "Linear".to_string(),
+        v if v > 0.99 => "Curved".to_string(),
+        v => format!("{:.0} % curved", v * 100.0),
+    }))
+    .on_hover_text("Curved: small pushes move the view less than large ones, for fine control and fewer stray moves");
+    ui.end_row();
+    sub(ui, "Dead zone");
+    ui.add(egui::Slider::new(&mut p.spacemouse_dead_zone, 0.0..=0.5).custom_formatter(|v, _| format!("{:.0} %", v * 100.0)))
+        .on_hover_text("How far the cap moves before the view does");
+    ui.end_row();
+    sub(ui, "Dominant axis only");
+    ui.checkbox(&mut p.spacemouse_dominant, "").on_hover_text("Only the direction the cap is pushed furthest moves the view");
+    ui.end_row();
+    sub(ui, "Reverse");
+    ui.horizontal_wrapped(|ui| {
+        for (flag, label) in p.spacemouse_invert.iter_mut().zip(["Pan left/right", "Pan up/down", "Zoom", "Tilt", "Spin"]) {
+            ui.checkbox(flag, label);
+        }
+    });
+    ui.end_row();
+    let labels = |a: &str| match a {
+        "none" => "Nothing",
+        "fit" => "Fit",
+        "home" => "Home view",
+        "front" => "Front",
+        "back" => "Back",
+        "top" => "Top",
+        "bottom" => "Bottom",
+        "left" => "Left",
+        "right" => "Right",
+        _ => "Iso",
+    };
+    // At least the two buttons every 3D mouse has.
+    if p.spacemouse_buttons.len() < 2 {
+        p.spacemouse_buttons.resize(2, "none".into());
+    }
+    for (i, action) in p.spacemouse_buttons.iter_mut().enumerate() {
+        sub(ui, &format!("Button {}", i + 1));
+        egui::ComboBox::from_id_salt(("pref_spacemouse_button", i)).selected_text(labels(action)).show_ui(ui, |ui| {
+            for a in crate::spacemouse::ACTIONS {
+                ui.selectable_value(action, a.to_string(), labels(a));
+            }
+        });
+        ui.end_row();
+    }
 }
 
 /// What the mouse does under a preset.
@@ -695,6 +816,18 @@ pub fn set(app: &mut SolveApp, p: &serde_json::Value) -> Result<serde_json::Valu
     }
     if !(0.5..=2.5).contains(&new.ui_scale) || !(0.25..=4.0).contains(&new.look_at_speed) {
         return Err("`ui_scale` must be 0.5…2.5 and `look_at_speed` 0.25…4".into());
+    }
+    if ![new.spacemouse_pan_speed, new.spacemouse_turn_speed, new.spacemouse_zoom_speed].iter().all(|v| (0.1..=5.0).contains(v)) {
+        return Err("`spacemouse_pan_speed`, `spacemouse_turn_speed` and `spacemouse_zoom_speed` must be 0.1…5".into());
+    }
+    if !(0.0..=0.5).contains(&new.spacemouse_smoothing) || !(0.0..=1.0).contains(&new.spacemouse_response) {
+        return Err("`spacemouse_smoothing` must be 0…0.5 (seconds) and `spacemouse_response` 0…1".into());
+    }
+    if !(0.0..=0.5).contains(&new.spacemouse_dead_zone) {
+        return Err("`spacemouse_dead_zone` must be 0…0.5".into());
+    }
+    if new.spacemouse_buttons.len() > 64 || new.spacemouse_buttons.iter().any(|a| !crate::spacemouse::ACTIONS.contains(&a.as_str())) {
+        return Err(format!("`spacemouse_buttons` is a list (at most 64) of {}", crate::spacemouse::ACTIONS.join(", ")));
     }
     if new.theme != app.preferences.theme && new.theme != "system" {
         app.ui.dark = new.theme == "dark";

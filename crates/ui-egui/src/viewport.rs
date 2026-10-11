@@ -1381,6 +1381,8 @@ pub fn show(app: &mut SolveApp, ui: &mut egui::Ui) {
 
     // ---- navigation ----
     let h = rect.height().max(1.0) as f64;
+    // The 3D mouse's driver scrolls the wheel as the cap moves: while it does, the wheel is ignored.
+    let scroll = if crate::spacemouse::wheel_blocked(app) { 0.0 } else { scroll };
     if inside && scroll != 0.0 {
         let f = (-scroll as f64 * 0.0015 * crate::prefs::zoom_sign(app)).exp();
         // Preferences › Navigation › Zoom to the cursor (off: toward the view's centre).
@@ -1424,6 +1426,13 @@ pub fn show(app: &mut SolveApp, ui: &mut egui::Ui) {
     if !dragging {
         app.viewport.orbit_pivot = None;
     }
+    // The 3D mouse: its events since the last frame, then the cap's deflection moves the view
+    // (and keeps the frames coming while it does).
+    crate::spacemouse::poll(app);
+    let spacemouse = crate::spacemouse::navigate(app, f64::from(ui.input(|i| i.stable_dt)), h);
+    if spacemouse {
+        ui.ctx().request_repaint();
+    }
     if app.viewport.spin {
         // A click on the navigation bar (its own button) is not a stop.
         let bar = Rect::from_center_size(pos2(rect.center().x, rect.bottom() - 22.0), vec2(320.0, 30.0));
@@ -1455,6 +1464,7 @@ pub fn show(app: &mut SolveApp, ui: &mut egui::Ui) {
         || secondary_down
         || (app.viewport.nav.is_some() && primary_down)
         || app.viewport.cube_drag.is_some()
+        || spacemouse
         || app.viewport.spin
         || app.cam_anim.is_some();
     let hits = hover.filter(|_| inside && app.viewport.boxsel.is_none() && !navigating).map(|p| pick_cached(app, &proj, p)).unwrap_or_default();

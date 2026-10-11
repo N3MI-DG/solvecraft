@@ -3186,6 +3186,7 @@ dependencies = [
  "serde",
  "serde_json",
  "solvecraft-engine",
+ "solvecraft-spacemouse",
  "web-time",
 ]
 
