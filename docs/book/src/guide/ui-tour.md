@@ -19,8 +19,9 @@
   quarter-turn heading), a chamfered corner to that corner's
   iso view, and the house goes home. Drag the cube to orbit around the view centre. With a 3D
   mouse (a SpaceMouse), slide the cap to pan, push or pull it to zoom, tilt it to turn the view
-  up or down and twist it to spin; its buttons Fit and go Home, and Preferences › Navigation
-  sets speeds, dead zone, directions and what each button does.
+  up or down and twist it to spin; its buttons Fit and go Home. Turn it on in Preferences ›
+  Navigation, which also sets speeds, dead zone, directions and what each button does; on Linux
+  it needs a udev rule first (see [3D mouse](3d-mouse.md)).
   Right-click for the marking menu: eight commands around the cursor, plus a
   menu for whatever is under it.
 - **Dialogs** dock on the right with a live preview. Most features also show drag handles and a
