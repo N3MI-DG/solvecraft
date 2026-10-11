@@ -3172,6 +3172,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "solvecraft-spacemouse"
+version = "0.1.5"
+
+[[package]]
 name = "solvecraft-ui-egui"
 version = "0.1.5"
 dependencies = [
